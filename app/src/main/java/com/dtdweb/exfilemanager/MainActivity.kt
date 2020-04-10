@@ -1,66 +1,29 @@
 package com.dtdweb.exfilemanager
 
 import android.Manifest
-import android.app.PendingIntent
-import android.content.BroadcastReceiver
-import android.content.Context
+import android.app.Activity
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.hardware.usb.UsbDevice
-import android.hardware.usb.UsbManager
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
 import kotlinx.android.synthetic.main.activity_main.*
-import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        private val TAG = MainActivity::class.java.simpleName
 
         private const val REQUEST_EXTERNAL_STORAGE: Int = 1001
+
+        private const val REQUEST_OPEN_TREE: Int = 1002
+
         private val PERMISSIONS_STORAGE: Array<String> = arrayOf(
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE
         )
-
-        private const val ACTION_USB_PERMISSION = "com.android.example.USB_PERMISSION"
     }
-
-    private var manager: UsbManager? = null
-
-    private val usbReceiver = object : BroadcastReceiver() {
-
-        override fun onReceive(context: Context, intent: Intent) {
-            if (ACTION_USB_PERMISSION == intent.action) {
-                synchronized(this) {
-                    val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-
-                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                        device?.apply {
-
-                            setMessage("-----------------")
-
-                            setMessage("device Path = " + this.deviceName)
-
-                            setMessage("listFile = " + File(this.deviceName).listFiles())
-                            File(this.deviceName).listFiles()?.forEach { rootFiles ->
-                                setMessage("filePath = " + rootFiles.path)
-                            }
-
-                        }
-                    } else {
-                        setMessage("-----------------")
-                        setMessage("permission error .")
-                    }
-                }
-            }
-        }
-    }
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,34 +31,33 @@ class MainActivity : AppCompatActivity() {
 
         requestExternalStoragePermission()
 
-        manager = getSystemService(Context.USB_SERVICE) as UsbManager
-
-        val permissionIntent = PendingIntent.getBroadcast(this, 0, Intent(ACTION_USB_PERMISSION), 0)
-        val filter = IntentFilter(ACTION_USB_PERMISSION)
-        registerReceiver(usbReceiver, filter)
-
         exec.setOnClickListener {
 
             clearMessage()
 
-            val usbDevice = manager!!.deviceList.values.firstOrNull()
-            if (usbDevice != null) {
-                setMessage("device Found")
+            // Storage Access Framework APIを実行して外部ストレージのURIを取得する
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQUEST_OPEN_TREE)
 
-                setMessage("device Path = " + usbDevice.deviceName)
-                setMessage("listFile = " + File(usbDevice.deviceName).listFiles())
-
-                File(usbDevice.deviceName).listFiles()?.forEach { rootFiles ->
-                    setMessage("filePath = " + rootFiles.path)
-                }
-
-                manager!!.requestPermission(usbDevice, permissionIntent)
-
-            } else {
-                setMessage("device Not Found")
-            }
         }
 
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQUEST_OPEN_TREE && resultCode == Activity.RESULT_OK) {
+            data?.data?.also { uri ->
+                // データ取得
+                val docFile = DocumentFile.fromTreeUri(this, uri)!!
+                setMessage("canRead = " + docFile.canRead())
+                if (docFile.canRead()) {
+                    setMessage("docFile.listFiles() = " + docFile.listFiles())
+                    docFile.listFiles().forEach {
+                        setMessage("fileName = " + it.name)
+                        setMessage("filePath = " + it.uri.path)
+                    }
+                }
+            }
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     private fun requestExternalStoragePermission() {
